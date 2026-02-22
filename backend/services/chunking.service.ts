@@ -1,9 +1,9 @@
 // services/chunking.service.ts
 // Heading-aware chunking with sliding window overlap
 //
-// Chunk size : 800 words (word count ≈ token count)
-// Overlap    : 150 words
-// Stride     : 650 words (next chunk starts at word index 650)
+// Chunk size : 350 words (word count ≈ token count)
+// Overlap    : 75 words
+// Stride     : 275 words (next chunk starts at word index 275)
 //
 // Split priority:
 //   1. Headings (ALL CAPS / markdown #)
@@ -14,9 +14,9 @@
 import { randomUUID } from 'crypto';
 import { Chunk, ExtractedDocument } from '../types';
 
-const MAX_CHUNK_WORDS = 800;
-const OVERLAP_WORDS = 150;
-const STRIDE = MAX_CHUNK_WORDS - OVERLAP_WORDS; // 650
+const MAX_CHUNK_WORDS = 350;
+const OVERLAP_WORDS = 75;
+const STRIDE = MAX_CHUNK_WORDS - OVERLAP_WORDS; // 275
 
 // ───────────────────────────────────────────────
 // Word utilities
@@ -135,14 +135,14 @@ function snapToSentenceBoundary(words: string[], targetEnd: number): number {
 /**
  * Sliding window chunker over a word array.
  *
- * chunk[0] = words[0   .. 800)    (snapped to sentence boundary)
- * chunk[1] = words[650 .. 1450)   (snapped)
- * chunk[2] = words[1300 .. 2100)  (snapped)
+ * chunk[0] = words[0   .. 350)    (snapped to sentence boundary)
+ * chunk[1] = words[275 .. 625)    (snapped)
+ * chunk[2] = words[550 .. 900)    (snapped)
  * ...
  *
  * Guarantees:
- * - Every chunk is ≤ 830 words (800 + up to 30 for sentence snap)
- * - Overlap is ~150 words (exact when no snap adjustment)
+ * - Every chunk is ≤ 380 words (350 + up to 30 for sentence snap)
+ * - Overlap is ~75 words (exact when no snap adjustment)
  * - Last chunk captures all remaining words
  */
 function slidingWindowChunk(words: string[]): string[] {
@@ -331,7 +331,7 @@ function findPageNumber(
  * 1. Split by headings
  * 2. Within oversized sections: split by paragraphs → sentences → word window
  * 3. Merge small adjacent pieces
- * 4. Apply 150-word sliding window overlap between adjacent chunks
+ * 4. Apply 75-word sliding window overlap between adjacent chunks
  */
 export function chunkDocument(doc: ExtractedDocument): Chunk[] {
   const text = doc.fullText;

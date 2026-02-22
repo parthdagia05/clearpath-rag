@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import type { DebugInfo } from '../App';
-import api from '../services/api';
+import type { DebugData } from '../App';
+import { sendMessage } from '../services/api';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  hasWarning?: boolean;
 }
 
 interface ChatWindowProps {
-  onDebugUpdate: (info: DebugInfo | null) => void;
+  onDebugUpdate: (data: DebugData | null) => void;
 }
 
 function ChatWindow({ onDebugUpdate }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,11 +33,22 @@ function ChatWindow({ onDebugUpdate }: ChatWindowProps) {
     setLoading(true);
 
     try {
-      const res = await api.post('/chat', { message: text });
-      const { reply, debug } = res.data;
+      const response = await sendMessage(text, conversationId);
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      onDebugUpdate(debug);
+      // Track conversation ID across turns
+      setConversationId(response.conversation_id);
+
+      const hasWarning = response.metadata.evaluator_flags.length > 0;
+
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: response.answer, hasWarning },
+      ]);
+
+      onDebugUpdate({
+        metadata: response.metadata,
+        sources: response.sources,
+      });
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -68,6 +81,11 @@ function ChatWindow({ onDebugUpdate }: ChatWindowProps) {
               {msg.role === 'user' ? 'You' : 'ClearPath'}
             </span>
             <p>{msg.content}</p>
+            {msg.hasWarning && (
+              <div className="warning-box">
+                ⚠ Low confidence — please verify with support.
+              </div>
+            )}
           </div>
         ))}
         {loading && (

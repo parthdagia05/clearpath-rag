@@ -6,3 +6,5 @@ dist/
 .env
 backend/data/embeddings.json
 backend/data/chunks.json
+
+backend/.env

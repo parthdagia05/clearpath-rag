@@ -8,6 +8,8 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   reply: string;
+  retrievedChunksCount: number;
+  topScore: number;
   debug: DebugInfo;
 }
 
@@ -53,3 +55,36 @@ export interface Chunk {
   text: string;
   embedding?: number[];
 }
+
+// --- POST /query API contract types ---
+
+export interface QueryRequest {
+  question: string;
+  conversation_id?: string;
+}
+
+export interface Source {
+  document: string;
+  page: number | null;
+  relevance_score: number;
+}
+
+export interface QueryMetadata {
+  model_used: string;
+  classification: string;
+  tokens: {
+    input: number;
+    output: number;
+  };
+  latency_ms: number;
+  chunks_retrieved: number;
+  evaluator_flags: string[];
+}
+
+export interface QueryResponse {
+  answer: string;
+  metadata: QueryMetadata;
+  sources: Source[];
+  conversation_id: string;
+}
+

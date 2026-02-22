@@ -4,7 +4,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import chatRoutes from './routes/chat.routes';
+import queryRoutes from './routes/query.routes';
 import retrieveRoutes from './routes/retrieve.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { initializeModel } from './services/embedding.service';
@@ -23,7 +23,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Routes
-app.use('/api/chat', chatRoutes);
+app.use('/query', queryRoutes);
 app.use('/api/retrieve', retrieveRoutes);
 
 // Error handling (must be last)

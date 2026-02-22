@@ -1,40 +1,53 @@
 // services/pdf.service.ts
-// PDF ingestion using pdf-parse with text cleaning
+// PDF ingestion using pdfjs-dist with per-page text extraction
 
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
 import { ExtractedDocument, ExtractedPage } from '../types';
 
+// pdfjs-dist v5 legacy build — compatible with CommonJS / ts-node
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+
 /**
- * Extract text from a single PDF file.
- * Attempts to preserve page boundaries using pdf-parse's page rendering.
+ * Extract text from a single PDF file using pdfjs-dist.
+ * Extracts text per-page, preserving page boundaries.
  */
 export async function extractPdf(filePath: string): Promise<ExtractedDocument> {
   const absolutePath = path.resolve(filePath);
   const buffer = fs.readFileSync(absolutePath);
   const name = path.basename(absolutePath, '.pdf');
 
+  // Load the PDF document
+  const data = new Uint8Array(buffer);
+  const doc = await pdfjsLib.getDocument({
+    data,
+    useSystemFonts: true,
+  }).promise;
+
   const pages: ExtractedPage[] = [];
-  let pageNumber = 0;
 
-  const options = {
-    // Custom page renderer to capture per-page text
-    pagerender: async (pageData: any) => {
-      pageNumber++;
-      const textContent = await pageData.getTextContent();
-      const strings = textContent.items.map((item: any) => item.str);
-      const pageText = strings.join(' ');
-      pages.push({ pageNumber, text: pageText });
-      return pageText;
-    },
-  };
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const textContent = await page.getTextContent();
 
-  const result = await pdfParse(buffer, options);
+    // Join text items — items with `hasEOL` get a newline appended
+    const strings: string[] = [];
+    for (const item of textContent.items as any[]) {
+      if (typeof item.str === 'string') {
+        strings.push(item.str);
+        if (item.hasEOL) {
+          strings.push('\n');
+        }
+      }
+    }
+    const pageText = strings.join('');
+    pages.push({ pageNumber: i, text: pageText });
+  }
 
-  // If page rendering didn't capture pages, fall back to full text
+  // Fallback: if somehow no pages were extracted, create a single empty page
   if (pages.length === 0) {
-    pages.push({ pageNumber: 1, text: result.text });
+    pages.push({ pageNumber: 1, text: '' });
   }
 
   // Clean each page's text
@@ -117,7 +130,7 @@ function removeRepeatingHeadersFooters(text: string): string {
 
 /**
  * Extract all PDFs from a directory.
- * Fails gracefully if directory is missing.
+ * Fails gracefully per-document — one bad PDF won't stop the rest.
  */
 export async function extractAllPdfs(
   docsDir: string
@@ -144,6 +157,7 @@ export async function extractAllPdfs(
   console.log(`[PDF Service] Found ${files.length} PDF(s) in ${absoluteDir}`);
 
   const documents: ExtractedDocument[] = [];
+  let failedCount = 0;
 
   for (const file of files) {
     const filePath = path.join(absoluteDir, file);
@@ -151,9 +165,17 @@ export async function extractAllPdfs(
       console.log(`[PDF Service]   Processing: ${file}`);
       const doc = await extractPdf(filePath);
       documents.push(doc);
-    } catch (err) {
-      console.error(`[PDF Service]   Failed to process ${file}:`, err);
+    } catch (err: any) {
+      failedCount++;
+      const message = err?.message || String(err);
+      console.error(`[PDF Service]   ❌ FAILED: ${file} — ${message}`);
     }
+  }
+
+  if (failedCount > 0) {
+    console.warn(
+      `[PDF Service] ${failedCount}/${files.length} document(s) failed to process.`
+    );
   }
 
   return documents;

@@ -8,7 +8,7 @@
 import { embed } from './embedding.service';
 import { search, getStoreSize } from './vectorStore.service';
 
-const SIMILARITY_THRESHOLD = 0.65;
+const SIMILARITY_THRESHOLD = 0.60;
 const TOP_K = 5;
 const TIMEOUT_MS = 30_000;
 

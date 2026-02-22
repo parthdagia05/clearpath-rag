@@ -1,17 +1,16 @@
 import ChatWindow from './components/ChatWindow';
 import DebugPanel from './components/DebugPanel';
 import { useState } from 'react';
+import type { QueryMetadata, Source } from './types';
 import './App.css';
 
-export interface DebugInfo {
-  model: string;
-  tokensUsed: number;
-  latencyMs: number;
-  evaluatorFlag: string;
+export interface DebugData {
+  metadata: QueryMetadata;
+  sources: Source[];
 }
 
 function App() {
-  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [debugData, setDebugData] = useState<DebugData | null>(null);
 
   return (
     <div className="app-container">
@@ -19,8 +18,8 @@ function App() {
         <h1>ClearPath Support</h1>
       </header>
       <main className="app-main">
-        <ChatWindow onDebugUpdate={setDebugInfo} />
-        <DebugPanel debugInfo={debugInfo} />
+        <ChatWindow onDebugUpdate={setDebugData} />
+        <DebugPanel debugData={debugData} />
       </main>
     </div>
   );

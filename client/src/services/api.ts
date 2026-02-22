@@ -2,16 +2,28 @@
 // Axios wrapper for backend API calls
 
 import axios from 'axios';
+import type { QueryResponse } from '../types';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
+  baseURL: 'http://localhost:3001',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// TODO: Implement sendMessage()
-//   - POST /chat with { message, sessionId? }
-//   - Return ChatResponse (reply + debug info)
+/**
+ * Send a question to POST /query.
+ */
+export async function sendMessage(
+  question: string,
+  conversationId?: string
+): Promise<QueryResponse> {
+  const body: { question: string; conversation_id?: string } = { question };
+  if (conversationId) {
+    body.conversation_id = conversationId;
+  }
+  const res = await api.post<QueryResponse>('/query', body);
+  return res.data;
+}
 
 export default api;
