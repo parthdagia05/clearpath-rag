@@ -171,7 +171,7 @@ Flags are **informational** — they do not block the response. They are surface
 ### Backend
 
 ```bash
-git clone <repo-url>
+git clone (https://github.com/parthdagia05/clearpath-rag.git)
 cd clearpath-rag/backend
 npm install
 ```
