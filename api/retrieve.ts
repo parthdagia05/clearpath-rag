@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureInitialized } from './_lib/init';
-import { retrieve } from '../backend/services/retrieval.service';
+import { retrieve } from './_lib/retrieval';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

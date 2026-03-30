@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureInitialized } from './_lib/init';
-import { retrieve } from '../backend/services/retrieval.service';
+import { retrieve } from './_lib/retrieval';
 import { classify } from '../backend/services/router.service';
 import { callGroq } from '../backend/services/llm.service';
 import { evaluate } from '../backend/services/evaluator.service';
