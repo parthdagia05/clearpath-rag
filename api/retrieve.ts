@@ -10,16 +10,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await ensureInitialized();
   } catch (err) {
-    console.error('[retrieve] Initialization failed:', err);
-    return res.status(503).json({ error: 'Service initializing, please retry in a few seconds.' });
+    console.error('[retrieve] Init failed:', err);
+    return res.status(503).json({ error: 'Service initializing, please retry.' });
   }
 
   const { query } = req.body;
 
   if (!query || typeof query !== 'string' || query.trim().length === 0) {
-    return res.status(400).json({
-      error: 'Missing or empty "query" field in request body.',
-    });
+    return res.status(400).json({ error: 'Missing or empty "query" field.' });
   }
 
   try {
@@ -28,11 +26,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[retrieve] Error:', message);
-
-    if (message === 'Retrieval timeout') {
-      return res.status(504).json({ error: 'Retrieval timeout' });
-    }
-
-    return res.status(500).json({ error: 'Retrieval failed.' });
+    return res.status(message === 'Retrieval timeout' ? 504 : 500).json({ error: message });
   }
 }

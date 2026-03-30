@@ -5,12 +5,10 @@
   "installCommand": "npm install",
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 30,
       "includeFiles": "backend/data/**"
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/((?!api/).*)", "destination": "/" }
   ]
 }

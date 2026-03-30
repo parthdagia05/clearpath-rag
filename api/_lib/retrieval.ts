@@ -1,9 +1,5 @@
-// api/_lib/retrieval.ts
-// Serverless retrieval service — uses HuggingFace API embeddings
-// instead of the local @xenova/transformers model.
-
 import { embed } from './embedding';
-import { search } from '../../backend/services/vectorStore.service';
+import { search } from './vectorStore';
 
 const SIMILARITY_THRESHOLD = 0.60;
 const TOP_K = 5;
@@ -21,10 +17,7 @@ export interface RetrievalResult {
 }
 
 export async function retrieve(query: string): Promise<RetrievalResult> {
-  console.log(`[Retrieval] Embedding query via HuggingFace API...`);
   const queryEmbedding = await embed(query);
-
-  console.log('[Retrieval] Searching vector store...');
   const results = search(queryEmbedding, TOP_K);
 
   const filtered = results
@@ -37,6 +30,5 @@ export async function retrieve(query: string): Promise<RetrievalResult> {
       similarity_score: Math.round(r.score * 10000) / 10000,
     }));
 
-  console.log(`[Retrieval] Returned ${filtered.length}/${results.length} chunks above threshold`);
   return { chunks: filtered };
 }
