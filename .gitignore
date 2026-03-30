@@ -4,7 +4,8 @@ client/node_modules/
 
 dist/
 .env
-backend/data/embeddings.json
-backend/data/chunks.json
-
 backend/.env
+
+# Keep embeddings.json tracked — needed for Vercel deployment
+# backend/data/embeddings.json
+# backend/data/chunks.json
