@@ -1,7 +1,3 @@
-// services/router.service.ts
-// Deterministic query complexity router (NO LLM)
-// Classifies queries as "simple" or "complex" using rule-based heuristics
-
 const COMPLEX_KEYWORDS = [
   'compare',
   'difference',
@@ -31,17 +27,6 @@ export interface RouterResult {
   model_used: string;
 }
 
-/**
- * Classify a question as simple or complex.
- *
- * Rules:
- *   - word_count < 8
- *   - AND question does NOT contain any complex keywords
- *   - AND question has <= 1 question mark
- *   → "simple" (llama-3.1-8b-instant)
- *
- *   Otherwise → "complex" (llama-3.3-70b-versatile)
- */
 export function classify(question: string): RouterResult {
   const q = question.toLowerCase().trim();
   const words = q.split(/\s+/).filter((w) => w.length > 0);

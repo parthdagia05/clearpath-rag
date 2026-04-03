@@ -1,6 +1,3 @@
-// src/services/api.ts
-// Axios wrapper for backend API calls
-
 import axios from 'axios';
 import type { QueryResponse } from '../types';
 
@@ -11,9 +8,6 @@ const api = axios.create({
   },
 });
 
-/**
- * Send a question to POST /query.
- */
 export async function sendMessage(
   question: string,
   conversationId?: string

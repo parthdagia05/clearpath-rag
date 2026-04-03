@@ -1,8 +1,3 @@
-// routes/retrieve.routes.ts
-// Temporary test route for retrieval pipeline
-// POST /api/retrieve { "query": "..." } → { chunks: [...] }
-// No LLM. No router integration.
-
 import { Router, Request, Response } from 'express';
 import { retrieve } from '../services/retrieval.service';
 
@@ -18,13 +13,11 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   try {
-    console.log('[Route /api/retrieve] Received query, starting retrieval...');
     const result = await retrieve(query.trim());
-    console.log('[Route /api/retrieve] Retrieval complete, sending response.');
     return res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Route /api/retrieve] Error:', message);
+    console.error('[retrieve] error:', message);
 
     if (message === 'Retrieval timeout') {
       return res.status(504).json({ error: 'Retrieval timeout' });

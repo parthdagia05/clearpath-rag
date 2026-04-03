@@ -1,29 +1,16 @@
-// services/embedding.service.ts
-// Local embedding generation using @xenova/transformers (BGE-small)
-// No external embedding APIs — singleton pattern for model caching
-
 import { pipeline } from '@xenova/transformers';
-
-// ───────────────────────────────────────────────
-// Singleton model instance
-// ───────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let embeddingPipeline: any = null;
 let modelDimension: number = 0;
 
-/**
- * Initialize the embedding model (singleton).
- * Loads BGE-small-en-v1.5 via @xenova/transformers.
- * Call once at startup; subsequent calls are no-ops.
- */
 export async function initializeModel(): Promise<void> {
   if (embeddingPipeline) {
-    console.log('[Embedding] Model already loaded — skipping initialization.');
+    console.log('[embedding] model already loaded, skipping initialization.');
     return;
   }
 
-  console.log('[Embedding] Loading model: Xenova/bge-small-en-v1.5...');
+  console.log('[embedding] loading model: Xenova/bge-small-en-v1.5...');
   const startTime = Date.now();
 
   embeddingPipeline = await pipeline(
@@ -31,7 +18,6 @@ export async function initializeModel(): Promise<void> {
     'Xenova/bge-small-en-v1.5'
   );
 
-  // Probe dimension with a test embedding
   const testResult = await embeddingPipeline('test', {
     pooling: 'mean',
     normalize: true,
@@ -39,24 +25,17 @@ export async function initializeModel(): Promise<void> {
   modelDimension = Array.from(testResult.data as Float32Array).length;
 
   const elapsed = Date.now() - startTime;
-  console.log(`[Embedding] Model loaded in ${elapsed}ms`);
-  console.log(`[Embedding] Embedding dimension: ${modelDimension}`);
+  console.log(`[embedding] model loaded in ${elapsed}ms`);
+  console.log(`[embedding] embedding dimension: ${modelDimension}`);
 }
 
-/**
- * Get the embedding dimension of the loaded model.
- */
 export function getDimension(): number {
   return modelDimension;
 }
 
-/**
- * Generate an embedding for a single text string.
- * Returns a number[] vector.
- */
 export async function embed(text: string): Promise<number[]> {
   if (!embeddingPipeline) {
-    throw new Error('[Embedding] Model not initialized. Call initializeModel() first.');
+    throw new Error('[embedding] model not initialized. call initializeModel() first.');
   }
 
   const result = await embeddingPipeline(text, {
@@ -67,14 +46,9 @@ export async function embed(text: string): Promise<number[]> {
   return Array.from(result.data as Float32Array);
 }
 
-/**
- * Generate embeddings for a batch of texts.
- * Processes sequentially to avoid OOM on large batches.
- * Returns number[][] (one vector per input text).
- */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (!embeddingPipeline) {
-    throw new Error('[Embedding] Model not initialized. Call initializeModel() first.');
+    throw new Error('[embedding] model not initialized. call initializeModel() first.');
   }
 
   const embeddings: number[][] = [];
@@ -86,9 +60,8 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
     });
     embeddings.push(Array.from(result.data as Float32Array));
 
-    // Progress logging every 50 chunks
     if ((i + 1) % 50 === 0 || i === texts.length - 1) {
-      console.log(`[Embedding]   Embedded ${i + 1}/${texts.length} chunks`);
+      console.log(`[embedding] embedded ${i + 1}/${texts.length} chunks`);
     }
   }
 

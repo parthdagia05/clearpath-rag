@@ -50,7 +50,6 @@ function DebugPanel({ debugData }: DebugPanelProps) {
         </div>
       </div>
 
-      {/* Sources */}
       {sources.length > 0 && (
         <>
           <h3 className="sources-heading">Sources</h3>
@@ -68,7 +67,6 @@ function DebugPanel({ debugData }: DebugPanelProps) {
         </>
       )}
 
-      {/* Warning when evaluator flags are present */}
       {flags.length > 0 && (
         <div className="evaluator-warning">
           ⚠ Low confidence — please verify with support.

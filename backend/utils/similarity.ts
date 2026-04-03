@@ -1,10 +1,3 @@
-// src/utils/similarity.ts
-// Manual cosine similarity — no external vector DB or library
-
-/**
- * Computes cosine similarity between two vectors.
- * Returns a value between -1 and 1 (1 = identical direction).
- */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     throw new Error('Vectors must have the same dimensionality');

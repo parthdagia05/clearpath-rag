@@ -1,16 +1,6 @@
-// api/_lib/embedding.ts
-// Lightweight embedding service for Vercel serverless.
-// Uses HuggingFace Inference API (free with token) instead of
-// @xenova/transformers which is too heavy for serverless.
-// Same model (BGE-small-en-v1.5) so embeddings are compatible with pre-computed vectors.
-
 const MODEL_ID = 'BAAI/bge-small-en-v1.5';
 const API_URL = `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`;
 
-/**
- * Embed a single text string via HuggingFace Inference API.
- * Returns a normalized 384-dim vector compatible with the pre-computed embeddings.
- */
 export async function embed(text: string): Promise<number[]> {
   const hfToken = process.env.HF_API_KEY;
   if (!hfToken) {
@@ -36,12 +26,12 @@ export async function embed(text: string): Promise<number[]> {
 
   const result = await response.json();
 
-  // HF returns a flat number[] (384-dim) for sentence-transformers models
+  // flat number[] (384-dim) for sentence-transformers models
   if (Array.isArray(result) && typeof result[0] === 'number') {
     return normalize(result as number[]);
   }
 
-  // Fallback: number[][] (tokens × dims) — apply mean pooling
+  // fallback: number[][] (tokens x dims), apply mean pooling
   if (Array.isArray(result) && Array.isArray(result[0])) {
     if (typeof result[0][0] === 'number') {
       return normalize(meanPool(result as number[][]));

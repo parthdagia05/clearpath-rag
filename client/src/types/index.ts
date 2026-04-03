@@ -1,6 +1,3 @@
-// src/types/index.ts
-// Shared frontend types matching POST /query API contract
-
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

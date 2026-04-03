@@ -1,6 +1,3 @@
-// types/index.ts
-// Shared TypeScript types and interfaces for ClearPath
-
 export interface ChatRequest {
   message: string;
   sessionId?: string;
@@ -35,8 +32,6 @@ export interface VectorSearchResult {
   page_number: number | null;
 }
 
-// --- Document ingestion types ---
-
 export interface ExtractedPage {
   pageNumber: number;
   text: string;
@@ -55,8 +50,6 @@ export interface Chunk {
   text: string;
   embedding?: number[];
 }
-
-// --- POST /query API contract types ---
 
 export interface QueryRequest {
   question: string;
@@ -87,4 +80,3 @@ export interface QueryResponse {
   sources: Source[];
   conversation_id: string;
 }
-
