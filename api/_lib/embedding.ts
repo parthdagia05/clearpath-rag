@@ -5,7 +5,7 @@
 // Same model (BGE-small-en-v1.5) so embeddings are compatible with pre-computed vectors.
 
 const MODEL_ID = 'BAAI/bge-small-en-v1.5';
-const API_URL = `https://api-inference.huggingface.co/pipeline/feature-extraction/${MODEL_ID}`;
+const API_URL = `https://router.huggingface.co/hf-inference/pipeline/feature-extraction/${MODEL_ID}`;
 
 /**
  * Embed a single text string via HuggingFace Inference API.
