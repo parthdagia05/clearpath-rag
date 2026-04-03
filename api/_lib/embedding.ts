@@ -1,30 +1,28 @@
 // api/_lib/embedding.ts
 // Lightweight embedding service for Vercel serverless.
-// Uses HuggingFace Inference API (free, no key required) instead of
-// @xenova/transformers which is too heavy for serverless (native ONNX binaries).
+// Uses HuggingFace Inference API (free with token) instead of
+// @xenova/transformers which is too heavy for serverless.
 // Same model (BGE-small-en-v1.5) so embeddings are compatible with pre-computed vectors.
 
 const MODEL_ID = 'BAAI/bge-small-en-v1.5';
-const API_URL = `https://router.huggingface.co/hf-inference/pipeline/feature-extraction/${MODEL_ID}`;
+const API_URL = `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`;
 
 /**
  * Embed a single text string via HuggingFace Inference API.
  * Returns a normalized 384-dim vector compatible with the pre-computed embeddings.
  */
 export async function embed(text: string): Promise<number[]> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  // Optional: HF token for higher rate limits
   const hfToken = process.env.HF_API_KEY;
-  if (hfToken) {
-    headers['Authorization'] = `Bearer ${hfToken}`;
+  if (!hfToken) {
+    throw new Error('HF_API_KEY is not configured. Add it in Vercel environment variables.');
   }
 
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${hfToken}`,
+    },
     body: JSON.stringify({
       inputs: text,
       options: { wait_for_model: true },
@@ -42,11 +40,9 @@ export async function embed(text: string): Promise<number[]> {
   // Apply mean pooling + L2 normalization to match @xenova/transformers output.
   if (Array.isArray(result) && Array.isArray(result[0])) {
     if (typeof result[0][0] === 'number') {
-      // result is number[][] — token-level embeddings, apply mean pooling
       return normalize(meanPool(result as number[][]));
     }
     if (Array.isArray(result[0][0])) {
-      // result is number[][][] — batch of token-level embeddings
       return normalize(meanPool(result[0] as number[][]));
     }
   }
