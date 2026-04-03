@@ -36,8 +36,12 @@ export async function embed(text: string): Promise<number[]> {
 
   const result = await response.json();
 
-  // HF feature-extraction returns number[][] (tokens × dims) for a single input.
-  // Apply mean pooling + L2 normalization to match @xenova/transformers output.
+  // HF returns a flat number[] (384-dim) for sentence-transformers models
+  if (Array.isArray(result) && typeof result[0] === 'number') {
+    return normalize(result as number[]);
+  }
+
+  // Fallback: number[][] (tokens × dims) — apply mean pooling
   if (Array.isArray(result) && Array.isArray(result[0])) {
     if (typeof result[0][0] === 'number') {
       return normalize(meanPool(result as number[][]));
