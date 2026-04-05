@@ -46,17 +46,17 @@ User Query → Embedding (HuggingFace API) → Vector Search → Router → Groq
 
 ### Document Ingestion
 
-1. **PDF Extraction** — PDFs are parsed page-by-page using `pdfjs-dist` (legacy build for CommonJS compatibility). Per-page text extraction preserves document structure.
+1. **PDF Extraction** - PDFs are parsed page-by-page using `pdfjs-dist` (legacy build for CommonJS compatibility). Per-page text extraction preserves document structure.
 
-2. **Text Cleaning** — Raw text undergoes normalization: line break collapsing, whitespace normalization, and repeating header/footer removal.
+2. **Text Cleaning** - Raw text undergoes normalization: line break collapsing, whitespace normalization, and repeating header/footer removal.
 
-3. **Chunking Strategy** — Documents are split using a heading-aware sliding window approach:
+3. **Chunking Strategy** - Documents are split using a heading-aware sliding window approach:
    - Max chunk size: 350 words
    - Overlap: 75 words (stride = 275)
    - Sentence-boundary snapping: chunk boundaries are adjusted to avoid splitting mid-sentence
    - Headings (lines starting with `#` or all-caps lines) trigger chunk boundaries to preserve semantic coherence
 
-4. **Embedding Generation** — Each chunk is embedded using BGE-small-en-v1.5 (384-dimensional vectors) and persisted to `data/embeddings.json`.
+4. **Embedding Generation** - Each chunk is embedded using BGE-small-en-v1.5 (384-dimensional vectors) and persisted to `data/embeddings.json`.
 
 ### Retrieval
 
@@ -75,15 +75,15 @@ The router uses deterministic, rule-based classification with no LLM calls.
 
 1. **Input normalization:** `question.toLowerCase().trim()`
 
-2. **Complex keyword detection** — If the query contains any of the following keywords, it is classified as complex:
+2. **Complex keyword detection** - If the query contains any of the following keywords, it is classified as complex:
    ```
    compare, difference, explain, summarize, analyse, analyze, why, how, when,
    pros, cons, advantages, disadvantages, steps, across, between, vs, versus
    ```
 
-3. **Word count check** — Queries with 8 or more words are classified as complex.
+3. **Word count check** - Queries with 8 or more words are classified as complex.
 
-4. **Question mark count** — Queries with more than 1 question mark are classified as complex.
+4. **Question mark count** - Queries with more than 1 question mark are classified as complex.
 
 ### Classification Logic
 
@@ -132,8 +132,8 @@ Flags are informational and do not block the response. They are surfaced in the 
 }
 ```
 
-- `question` (string, required) — The user's question.
-- `conversation_id` (string, optional) — If provided, echoed back. If omitted, a new ID is generated (`conv_` + 8 random alphanumeric characters).
+- `question` (string, required) - The user's question.
+- `conversation_id` (string, optional) - If provided, echoed back. If omitted, a new ID is generated (`conv_` + 8 random alphanumeric characters).
 
 **Response:**
 
@@ -164,10 +164,10 @@ Flags are informational and do not block the response. They are surfaced in the 
 
 **Error responses:**
 
-- `400` — Missing or empty `question` field
-- `405` — Method not allowed (only POST is accepted)
-- `500` — Retrieval or LLM failure
-- `503` — Service initializing (cold start)
+- `400` - Missing or empty `question` field
+- `405` - Method not allowed (only POST is accepted)
+- `500` - Retrieval or LLM failure
+- `503` - Service initializing (cold start)
 
 ### `GET /api/health`
 
@@ -334,16 +334,16 @@ The system ingests 30 PDF documents covering various aspects of the ClearPath pl
 
 ## Known Limitations
 
-1. **Static similarity threshold (0.60)** — A single threshold applies to all queries. Conceptual queries may need a lower threshold while factual lookups could use a higher one. An adaptive threshold or per-query calibration would improve precision.
+1. **Static similarity threshold (0.60)** - A single threshold applies to all queries. Conceptual queries may need a lower threshold while factual lookups could use a higher one. An adaptive threshold or per-query calibration would improve precision.
 
-2. **No cross-encoder reranking** — Initial retrieval uses bi-encoder cosine similarity only. A cross-encoder reranker (e.g., ms-marco-MiniLM) on top of retrieved candidates would significantly improve ranking quality.
+2. **No cross-encoder reranking** - Initial retrieval uses bi-encoder cosine similarity only. A cross-encoder reranker (e.g., ms-marco-MiniLM) on top of retrieved candidates would significantly improve ranking quality.
 
-3. **No conversation memory** — Each query is processed independently. The `conversation_id` is tracked but not used for multi-turn context. A sliding window of previous turns would enable follow-up questions.
+3. **No conversation memory** - Each query is processed independently. The `conversation_id` is tracked but not used for multi-turn context. A sliding window of previous turns would enable follow-up questions.
 
-4. **No streaming** — Responses are returned as a single JSON payload after the full LLM generation completes. Server-sent events (SSE) would improve perceived latency.
+4. **No streaming** - Responses are returned as a single JSON payload after the full LLM generation completes. Server-sent events (SSE) would improve perceived latency.
 
-5. **Context trimming may remove detail** — Chunks are trimmed to 250 words before being sent to the LLM. For information-dense documents, this may cut off relevant trailing content. A smarter extraction strategy (e.g., extractive summarization) would be more robust.
+5. **Context trimming may remove detail** - Chunks are trimmed to 250 words before being sent to the LLM. For information-dense documents, this may cut off relevant trailing content. A smarter extraction strategy (e.g., extractive summarization) would be more robust.
 
-6. **Single embedding model** — BGE-small-en-v1.5 is lightweight but may underperform on domain-specific terminology compared to larger or fine-tuned models.
+6. **Single embedding model** - BGE-small-en-v1.5 is lightweight but may underperform on domain-specific terminology compared to larger or fine-tuned models.
 
-7. **Cold start latency** — The first request after a serverless cold start may take a few extra seconds as the vector store loads into memory and the HuggingFace model warms up.
+7. **Cold start latency** - The first request after a serverless cold start may take a few extra seconds as the vector store loads into memory and the HuggingFace model warms up.
