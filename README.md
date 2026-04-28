@@ -1,349 +1,225 @@
-# ClearPath RAG Customer Support Chatbot
+# PDF-Constrained Conversational Agent (STAIR × Scaler — Task 3)
 
-**Live Demo:** [clearpath-rag.vercel.app](https://clearpath-rag.vercel.app)
+A conversational agent that you can chat with about **any PDF you upload**. Answers
+are strictly grounded in the document — out-of-scope or unsupported questions are
+explicitly refused with a fixed sentence. Every factual statement carries an inline
+`[Page N]` citation.
 
-ClearPath is a retrieval-augmented generation (RAG) system built to answer customer questions using ClearPath SaaS product documentation. It uses a deterministic rule-based router to classify query complexity, routes to appropriate Groq Llama models, and applies a post-response output evaluator to flag low-confidence answers. A minimal React chat UI with an integrated debug panel provides transparency into every pipeline stage.
+> Originally built as a fixed-corpus support bot (`clearpath-rag`); refactored to
+> satisfy Task 3 of the STAIR × Scaler take-home assignment.
 
-## Table of Contents
+**Live demo:** [clearpath-rag.vercel.app](https://clearpath-rag.vercel.app)
 
-- [Architecture Overview](#architecture-overview)
-- [RAG Pipeline](#rag-pipeline)
-- [Model Router](#model-router)
-- [Output Evaluator](#output-evaluator)
-- [API Contract](#api-contract)
-- [Project Structure](#project-structure)
-- [How to Run Locally](#how-to-run-locally)
-- [Vercel Deployment](#vercel-deployment)
-- [Models Used](#models-used)
-- [Document Corpus](#document-corpus)
-- [Tech Stack](#tech-stack)
-- [Known Limitations](#known-limitations)
+## Submission contents
 
-## Architecture Overview
+| File | Purpose |
+|---|---|
+| [`README.md`](README.md) | This file — quick start + overview. |
+| [`TECHNICAL_NOTE.md`](TECHNICAL_NOTE.md) | Architecture, decisions, trade-offs (required by spec). |
+| [`TASK3_TESTING.md`](TASK3_TESTING.md) | Sample PDF + 5 valid queries + 3 out-of-scope queries (required by spec). |
+| [`docs/`](docs/) | 30 sample text-based PDFs you can use as inputs. |
+| [`api/`](api/) | Vercel serverless functions (production runtime). |
+| [`backend/`](backend/) | Thin Express adapter for local dev. |
+| [`client/`](client/) | React + Vite frontend (chat UI + debug panel). |
 
-The system follows a linear pipeline from user query to structured response:
+## What it does
 
-```
-User Query → Embedding (HuggingFace API) → Vector Search → Router → Groq LLM → Evaluator → Response
-```
+| Task 3 requirement | How this app satisfies it |
+|---|---|
+| Accept any PDF as input | `POST /api/upload` — raw PDF bytes, returns `document_id`. |
+| Conversational querying | Per-`conversation_id` memory window of the last 8 turns. |
+| Answer **only** from the PDF | System prompt bounds knowledge to "the only knowledge you may use" + zero-context short-circuit. |
+| Explicitly refuse out-of-scope | Two canonical refusal sentences, surfaced via `metadata.refused`. |
+| Citations | Inline `[Page N]` in every answer + structured `sources[]` with relevance scores. |
+| Bonus: multilingual | `EMBEDDING_MODEL` env swap to `BAAI/bge-m3` for retrieval; LLM responds in user's language. |
 
-**Core components:**
+## Quick start (local)
 
-| Component | Technology |
-|-----------|-----------|
-| Embeddings (Ingestion) | BGE-small-en-v1.5 via `@xenova/transformers` (384 dimensions) |
-| Embeddings (Production) | BGE-small-en-v1.5 via HuggingFace Inference API |
-| Vector Store | In-memory cosine similarity search with JSON file persistence |
-| Retrieval | Top-5 nearest neighbors retrieved, top-3 highest scoring passed to LLM |
-| Similarity Threshold | 0.60 (chunks below this are filtered out) |
-| Chunking | Heading-aware splitting + sliding window (350 words max, 75 word overlap) |
-| Router | Deterministic rule-based classifier (no LLM calls) |
-| LLM | Groq API with Llama 3.1 8B (simple) / Llama 3.3 70B (complex) |
-| Evaluator | Three-flag diagnostic system (no_context, refusal, low_similarity) |
-| Frontend | React 19 + Vite with debug panel showing full metadata |
+Prereqs: Node 18+, a Groq API key, a HuggingFace API token with "Inference Providers" permission.
 
-## RAG Pipeline
+```bash
+git clone https://github.com/parthdagia05/clearpath-rag.git
+cd clearpath-rag
 
-### Document Ingestion
+# 1. Root and backend deps
+npm install
+cd backend && npm install && cd ..
+cd client && npm install && cd ..
 
-1. **PDF Extraction** - PDFs are parsed page-by-page using `pdfjs-dist` (legacy build for CommonJS compatibility). Per-page text extraction preserves document structure.
+# 2. Configure
+cp .env.example backend/.env
+# edit backend/.env and set GROQ_API_KEY and HF_API_KEY
+# (optional) set EMBEDDING_MODEL=BAAI/bge-m3 for multilingual retrieval
 
-2. **Text Cleaning** - Raw text undergoes normalization: line break collapsing, whitespace normalization, and repeating header/footer removal.
-
-3. **Chunking Strategy** - Documents are split using a heading-aware sliding window approach:
-   - Max chunk size: 350 words
-   - Overlap: 75 words (stride = 275)
-   - Sentence-boundary snapping: chunk boundaries are adjusted to avoid splitting mid-sentence
-   - Headings (lines starting with `#` or all-caps lines) trigger chunk boundaries to preserve semantic coherence
-
-4. **Embedding Generation** - Each chunk is embedded using BGE-small-en-v1.5 (384-dimensional vectors) and persisted to `data/embeddings.json`.
-
-### Retrieval
-
-1. The user query is embedded using the same BGE-small-en-v1.5 model.
-2. Cosine similarity is computed against all stored chunk vectors.
-3. The top-5 results are returned, filtered by the 0.60 similarity threshold.
-4. Only the top-3 highest-scoring chunks are passed to the LLM as context (each trimmed to 250 words max to control token cost).
-
-> **This system does NOT use LangChain, LlamaIndex, or any managed RAG services.** All retrieval logic (embedding, similarity search, threshold filtering) is implemented from scratch.
-
-## Model Router
-
-The router uses deterministic, rule-based classification with no LLM calls.
-
-### Rules
-
-1. **Input normalization:** `question.toLowerCase().trim()`
-
-2. **Complex keyword detection** - If the query contains any of the following keywords, it is classified as complex:
-   ```
-   compare, difference, explain, summarize, analyse, analyze, why, how, when,
-   pros, cons, advantages, disadvantages, steps, across, between, vs, versus
-   ```
-
-3. **Word count check** - Queries with 8 or more words are classified as complex.
-
-4. **Question mark count** - Queries with more than 1 question mark are classified as complex.
-
-### Classification Logic
-
-```
-IF word_count < 8 AND no complex keywords AND question_marks <= 1
-  → simple → llama-3.1-8b-instant
-ELSE
-  → complex → llama-3.3-70b-versatile
+# 3. Run (two terminals)
+cd backend && npm run dev      # http://localhost:3001
+cd client  && npm run dev      # http://localhost:5173
 ```
 
-All routing decisions are logged in structured JSON format:
+Then open `http://localhost:5173`, drop in a PDF, and ask away.
+
+## API contract
+
+### `POST /api/upload`
+Upload a PDF. Returns a `document_id` valid for 1 hour.
+
+```bash
+curl -s -X POST http://localhost:3001/api/upload \
+  -H "Content-Type: application/pdf" \
+  -H "X-Filename: my.pdf" \
+  --data-binary @my.pdf
+```
 
 ```json
 {
-  "query": "...",
-  "classification": "simple|complex",
-  "model_used": "...",
-  "tokens_input": 0,
-  "tokens_output": 0,
-  "latency_ms": 0
+  "document_id": "doc_abc123",
+  "filename": "my.pdf",
+  "page_count": 4,
+  "chunk_count": 7,
+  "conversation_id": "conv_zzz",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "uploaded_at": 1730000000000
 }
 ```
-
-## Output Evaluator
-
-The evaluator runs after the LLM response and returns an array of diagnostic flags.
-
-| Flag | Condition |
-|------|-----------|
-| `no_context` | 0 chunks retrieved AND the answer is not a refusal |
-| `refusal` | Answer contains refusal phrases: "not found", "cannot find", "do not have", "not mentioned", "I don't know" |
-| `low_similarity` | Top similarity score is below 0.60 |
-
-Flags are informational and do not block the response. They are surfaced in the frontend debug panel and included in the API response metadata.
-
-## API Contract
 
 ### `POST /api/query`
+Ask a question. Requires `document_id`. Optionally pass `conversation_id` for memory.
 
-**Request:**
-
-```json
-{
-  "question": "How do I reset my password?",
-  "conversation_id": "conv_abc12345"
-}
+```bash
+curl -s -X POST http://localhost:3001/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"document_id":"doc_abc123","question":"How do I cancel?"}'
 ```
 
-- `question` (string, required) - The user's question.
-- `conversation_id` (string, optional) - If provided, echoed back. If omitted, a new ID is generated (`conv_` + 8 random alphanumeric characters).
-
-**Response:**
-
 ```json
 {
-  "answer": "To reset your password, click 'Forgot Password'...",
+  "answer": "To cancel: 1) Go to Settings → Billing → Subscription, 2) Click 'Cancel Subscription'... [Page 2]",
   "metadata": {
-    "model_used": "llama-3.3-70b-versatile",
-    "classification": "complex",
-    "tokens": {
-      "input": 934,
-      "output": 128
-    },
+    "model_used": "llama-3.1-8b-instant",
+    "classification": "simple",
+    "tokens": { "input": 612, "output": 88 },
     "latency_ms": 530,
-    "chunks_retrieved": 3,
-    "evaluator_flags": []
+    "chunks_retrieved": 2,
+    "evaluator_flags": [],
+    "refused": false
   },
   "sources": [
     {
       "document": "21_Account_Management_FAQ.pdf",
-      "page": null,
-      "relevance_score": 0.7614
+      "page": 2,
+      "relevance_score": 0.7614,
+      "excerpt": "To cancel your subscription: 1. Go to Settings → Billing → Subscription..."
     }
   ],
-  "conversation_id": "conv_qwc2vnyh"
+  "conversation_id": "conv_zzz",
+  "document_id": "doc_abc123"
 }
 ```
 
-**Error responses:**
+Errors:
+- `400` — missing `question` or `document_id`
+- `404` (`code: DOCUMENT_NOT_FOUND`) — document expired or server restarted, re-upload
+- `405` — wrong HTTP method
+- `500` — LLM / retrieval failure
 
-- `400` - Missing or empty `question` field
-- `405` - Method not allowed (only POST is accepted)
-- `500` - Retrieval or LLM failure
-- `503` - Service initializing (cold start)
+### `GET /api/documents` / `?document_id=...`
+List all in-memory documents, or fetch one's metadata.
+
+### `DELETE /api/documents?document_id=...`
+Remove a document from memory (called by the UI when you click "Upload another PDF").
 
 ### `GET /api/health`
+Returns `{"status":"ok"}`.
 
-Returns `{"status": "ok"}` when the service is running.
+## How grounding works
 
-## Project Structure
+1. PDF → `pdfjs-dist` extracts per-page text, cleans whitespace.
+2. Each page is chunked (350 words, 75-word overlap, sentence-boundary snapped).
+3. Chunks are embedded via HuggingFace Inference API → kept in-memory keyed by `document_id`.
+4. On a query: cosine top-K=5, threshold ≥ 0.55. Top 3 are sent to the LLM as
+   `[Excerpt N | Page M | filename: …]` blocks.
+5. Strict system prompt with two canonical refusals; temperature `0.1`.
+6. If 0 chunks pass threshold → the LLM is **not called**, refusal returned directly.
+
+See [`TECHNICAL_NOTE.md`](TECHNICAL_NOTE.md) for the full pipeline and trade-offs.
+
+## Models
+
+| Layer | Default | Why |
+|---|---|---|
+| Embeddings | `BAAI/bge-small-en-v1.5` | 384-dim, fast on HF Inference API. Swap to `BAAI/bge-m3` (1024-dim) or `intfloat/multilingual-e5-small` (384-dim) for multilingual retrieval. |
+| LLM (simple) | `llama-3.1-8b-instant` (Groq) | Low latency for short factual queries. |
+| LLM (complex) | `llama-3.3-70b-versatile` (Groq) | Multi-section synthesis, multilingual generation. |
+
+A deterministic rule-based router (no LLM call) picks between the two.
+
+## Vercel deployment
+
+```bash
+vercel
+```
+
+Set env vars in the dashboard:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `GROQ_API_KEY` | yes | Groq cloud API key |
+| `HF_API_KEY` | yes | HF token with "Inference Providers" permission |
+| `EMBEDDING_MODEL` | no | Default `BAAI/bge-small-en-v1.5`. Set for multilingual. |
+
+The `vercel.json` already grants `/api/upload` 60s and `/api/query` 30s. Frontend
+is built from `client/` to static assets; API routes run as serverless functions.
+
+## Project layout
 
 ```
 clearpath-rag/
-├── api/                          # Vercel serverless functions
-│   ├── query.ts                  # POST /api/query (full RAG pipeline)
-│   ├── retrieve.ts               # POST /api/retrieve (retrieval only)
-│   ├── health.ts                 # GET /api/health
-│   └── _lib/                     # Shared serverless modules
-│       ├── embedding.ts          # HuggingFace Inference API embeddings
-│       ├── retrieval.ts          # Query → embed → search → filter
-│       ├── vectorStore.ts        # In-memory cosine similarity search
-│       ├── similarity.ts         # Cosine similarity computation
-│       ├── router.ts             # Deterministic query classifier
-│       ├── llm.ts                # Groq API integration
-│       ├── evaluator.ts          # Post-response quality flags
-│       ├── types.ts              # TypeScript interfaces
-│       └── init.ts               # Startup: load vector store
-├── backend/                      # Express backend (local development)
-│   ├── index.ts                  # Express server entry point
-│   ├── routes/                   # Express route handlers
-│   ├── services/                 # Core business logic
-│   ├── middleware/                # Error handling middleware
-│   ├── utils/                    # Cosine similarity
-│   ├── types/                    # TypeScript interfaces
-│   ├── scripts/                  # Ingestion scripts
-│   └── data/                     # Pre-computed embeddings (JSON)
-├── client/                       # React frontend
-│   ├── src/
-│   │   ├── components/           # ChatWindow, DebugPanel
-│   │   ├── services/             # Axios API client
-│   │   └── types/                # Frontend type definitions
-│   └── vite.config.ts            # Vite config with dev proxy
-├── docs/                         # 30 PDF source documents
-├── vercel.json                   # Vercel deployment configuration
-├── package.json                  # Root dependencies for serverless
-└── tsconfig.json                 # Root TypeScript config
+├── api/                                 # Vercel serverless functions
+│   ├── upload.ts                        # POST /api/upload (raw PDF bytes)
+│   ├── query.ts                         # POST /api/query (PDF chat)
+│   ├── retrieve.ts                      # POST /api/retrieve (debug)
+│   ├── documents.ts                     # GET / DELETE /api/documents
+│   ├── health.ts                        # GET /api/health
+│   └── _lib/
+│       ├── pdfProcessor.ts              # pdfjs-dist extract + chunker
+│       ├── embedding.ts                 # HF Inference API + multilingual prefix
+│       ├── retrieval.ts                 # cosine top-K, threshold, sort
+│       ├── documentStore.ts             # in-memory PDF store, 1h TTL
+│       ├── conversationStore.ts         # 8-turn rolling memory, scoped by document
+│       ├── router.ts                    # deterministic simple/complex classifier
+│       ├── llm.ts                       # Groq chat completions
+│       ├── evaluator.ts                 # refusal detection + flags
+│       ├── similarity.ts                # cosine similarity
+│       ├── types.ts                     # shared TS types
+│       └── init.ts                      # no-op (legacy compat)
+├── backend/
+│   ├── index.ts                         # Express dev server (thin adapter to api/*)
+│   ├── package.json
+│   └── tsconfig.json
+├── client/
+│   └── src/
+│       ├── App.tsx
+│       ├── components/
+│       │   ├── PdfUpload.tsx            # drag-drop upload card
+│       │   ├── ChatWindow.tsx           # chat UI
+│       │   └── DebugPanel.tsx           # live metadata + citations
+│       ├── services/api.ts              # axios client (upload + query + delete)
+│       └── types/index.ts
+├── docs/                                # 30 sample PDFs for testing
+├── TECHNICAL_NOTE.md                    # architecture write-up
+├── TASK3_TESTING.md                     # sample PDF + valid/invalid queries
+├── vercel.json
+└── package.json
 ```
 
-## How to Run Locally
+## Limitations
 
-### Prerequisites
-
-- Node.js 18+
-- A Groq API key ([console.groq.com](https://console.groq.com))
-
-### Backend
-
-```bash
-git clone https://github.com/parthdagia05/clearpath-rag.git
-cd clearpath-rag/backend
-npm install
-```
-
-Create a `.env` file:
-
-```
-GROQ_API_KEY=gsk_your_key_here
-PORT=3001
-```
-
-Ingest documents and start the server:
-
-```bash
-npx ts-node scripts/ingest.ts    # one-time ingestion
-npm run dev                       # starts on http://localhost:3001
-```
-
-### Frontend
-
-```bash
-cd clearpath-rag/client
-npm install
-npm run dev                       # starts on http://localhost:5173
-```
-
-The Vite dev server is configured with a proxy that forwards `/api/*` requests to `localhost:3001`, so the frontend works seamlessly with the local backend.
-
-### Environment Variables (Local)
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GROQ_API_KEY` | Yes | None | Groq API key for LLM calls |
-| `PORT` | No | 3001 | Backend server port |
-
-## Vercel Deployment
-
-The app is deployed on Vercel with the frontend served as static files and the backend running as serverless functions.
-
-**Live URL:** [clearpath-rag.vercel.app](https://clearpath-rag.vercel.app)
-
-### How It Works
-
-- The React frontend (built with Vite) is served as static assets from `client/dist/`
-- API routes (`/api/query`, `/api/retrieve`, `/api/health`) run as Vercel serverless functions from the `api/` directory
-- Query embeddings are generated via the HuggingFace Inference API (lightweight HTTP call) instead of running `@xenova/transformers` locally, since the ONNX runtime is too heavy for serverless
-- Pre-computed document embeddings are bundled with the serverless functions from `backend/data/embeddings.json`
-
-### Deploy Your Own
-
-1. Fork/clone the repository
-2. Import the project in [Vercel](https://vercel.com/new)
-3. Set the following build settings:
-   - **Build Command:** `cd client && npm install && npm run build`
-   - **Output Directory:** `client/dist`
-   - **Install Command:** `npm install`
-4. Add environment variables in Vercel dashboard:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROQ_API_KEY` | Yes | Groq API key for LLM calls |
-| `HF_API_KEY` | Yes | HuggingFace API token with "Inference Providers" permission |
-
-5. Deploy
-
-### Getting a HuggingFace API Token
-
-1. Create a free account at [huggingface.co](https://huggingface.co/join)
-2. Go to [Settings > Access Tokens](https://huggingface.co/settings/tokens)
-3. Create a new fine-grained token
-4. Enable the **"Make calls to Inference Providers"** permission under Inference
-5. Copy the token and add it as `HF_API_KEY` in Vercel
-
-## Models Used
-
-| Model | Use Case | Rationale |
-|-------|----------|-----------|
-| `llama-3.1-8b-instant` | Simple queries (factual lookups, short answers) | Low latency (~150ms), low token cost. Suitable for straightforward questions that don't require multi-step reasoning. |
-| `llama-3.3-70b-versatile` | Complex queries (comparisons, summaries, multi-part questions) | Higher reasoning capability. Handles synthesis across multiple document chunks, trade-off analysis, and structured output generation. |
-
-Two models are used to balance cost vs. reasoning quality. Simple queries (estimated ~60% of traffic) use the 8B model at a fraction of the cost, while complex queries route to the 70B model only when deeper reasoning is needed.
-
-## Document Corpus
-
-The system ingests 30 PDF documents covering various aspects of the ClearPath platform:
-
-| Category | Documents |
-|----------|-----------|
-| HR & Policy | Employee Handbook, Code of Conduct, PTO/Leave Policy, Remote Work Guidelines, Data Security & Privacy Policy |
-| Product Guides | User Guide v3.2, Getting Started Guide, Advanced Features, Mobile App Guide, Keyboard Shortcuts, Custom Workflows Tutorial |
-| Technical | API Documentation v2.1, Webhook Integration Guide, System Architecture Overview, Deployment Infrastructure Guide |
-| Business | Pricing Sheet 2024, Enterprise Plan Details, Feature Comparison Matrix, Support SLA & Response Times |
-| Internal | Engineering Team Structure, Product Roadmap 2024, Q4 2023 Retrospective, Weekly Standup Notes, Release Notes & Version History |
-| Support | FAQ/Common Questions, Account Management FAQ, Troubleshooting Guide, Onboarding Checklist, Reporting & Analytics Guide, Integrations Catalog |
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | React 19 + TypeScript + Vite | Chat UI with debug panel |
-| Backend (Local) | Express.js + TypeScript | REST API server for development |
-| Backend (Production) | Vercel Serverless Functions | Deployed API endpoints |
-| Embeddings (Ingestion) | @xenova/transformers | Local BGE-small model for document embedding |
-| Embeddings (Runtime) | HuggingFace Inference API | Lightweight API call for query embedding |
-| Vector Store | In-memory JSON | Cosine similarity search, no external DB |
-| LLM | Groq API | Llama 3.1 8B and Llama 3.3 70B |
-| PDF Processing | pdfjs-dist | PDF text extraction |
-| HTTP Client | Axios | API calls on both frontend and backend |
-
-## Known Limitations
-
-1. **Static similarity threshold (0.60)** - A single threshold applies to all queries. Conceptual queries may need a lower threshold while factual lookups could use a higher one. An adaptive threshold or per-query calibration would improve precision.
-
-2. **No cross-encoder reranking** - Initial retrieval uses bi-encoder cosine similarity only. A cross-encoder reranker (e.g., ms-marco-MiniLM) on top of retrieved candidates would significantly improve ranking quality.
-
-3. **No conversation memory** - Each query is processed independently. The `conversation_id` is tracked but not used for multi-turn context. A sliding window of previous turns would enable follow-up questions.
-
-4. **No streaming** - Responses are returned as a single JSON payload after the full LLM generation completes. Server-sent events (SSE) would improve perceived latency.
-
-5. **Context trimming may remove detail** - Chunks are trimmed to 250 words before being sent to the LLM. For information-dense documents, this may cut off relevant trailing content. A smarter extraction strategy (e.g., extractive summarization) would be more robust.
-
-6. **Single embedding model** - BGE-small-en-v1.5 is lightweight but may underperform on domain-specific terminology compared to larger or fine-tuned models.
-
-7. **Cold start latency** - The first request after a serverless cold start may take a few extra seconds as the vector store loads into memory and the HuggingFace model warms up.
+- **OCR not supported.** Scanned/image-only PDFs return 422.
+- **Cold-start state loss.** On Vercel cold start, in-memory documents are gone — the
+  client gets `DOCUMENT_NOT_FOUND` and re-uploads. For multi-instance prod, swap
+  `documentStore.ts` for an external vector DB.
+- **Single embedding model per deployment.** Switching `EMBEDDING_MODEL` requires
+  re-uploading PDFs (vectors must use the same model as the query).
+- **15 MB upload cap.** Adjust in `api/upload.ts` if your PDFs are larger.
+- **No reranker.** Bi-encoder cosine only. A cross-encoder (e.g. `ms-marco-MiniLM`)
+  would improve top-3 ranking on conceptual queries — explicit follow-up.

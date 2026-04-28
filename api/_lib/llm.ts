@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ChatTurn } from './conversationStore';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -11,6 +12,7 @@ export interface LlmResponse {
 export async function callGroq(
   model: string,
   systemPrompt: string,
+  history: ChatTurn[],
   userPrompt: string
 ): Promise<LlmResponse> {
   const apiKey = process.env.GROQ_API_KEY;
@@ -18,15 +20,18 @@ export async function callGroq(
     throw new Error('GROQ_API_KEY is not configured.');
   }
 
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((t) => ({ role: t.role, content: t.content })),
+    { role: 'user', content: userPrompt },
+  ];
+
   const response = await axios.post(
     GROQ_API_URL,
     {
       model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
+      messages,
+      temperature: 0.1,
       max_tokens: 1024,
     },
     {
