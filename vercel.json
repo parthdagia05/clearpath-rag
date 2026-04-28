@@ -4,9 +4,8 @@
   "outputDirectory": "client/dist",
   "installCommand": "npm install",
   "functions": {
-    "api/**/*.ts": {
-      "includeFiles": "backend/data/**"
-    }
+    "api/upload.ts": { "maxDuration": 60 },
+    "api/query.ts": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/" }

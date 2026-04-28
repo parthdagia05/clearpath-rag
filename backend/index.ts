@@ -1,49 +1,61 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import path from 'path';
-import queryRoutes from './routes/query.routes';
-import retrieveRoutes from './routes/retrieve.routes';
-import { errorHandler } from './middleware/errorHandler';
-import { initializeModel } from './services/embedding.service';
-import { loadFromFile, getStoreSize } from './services/vectorStore.service';
+
+import uploadHandler from '../api/upload';
+import queryHandler from '../api/query';
+import retrieveHandler from '../api/retrieve';
+import documentsHandler from '../api/documents';
+import healthHandler from '../api/health';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
 
-app.get('/health', (_req, res) => {
-  return res.json({ status: 'ok' });
+// JSON body parsing — but NOT for /api/upload (which expects raw PDF bytes)
+app.use((req, res, next) => {
+  if (req.path === '/api/upload') return next();
+  return express.json({ limit: '5mb' })(req, res, next);
 });
 
-app.use('/query', queryRoutes);
-app.use('/api/retrieve', retrieveRoutes);
-
-app.use(errorHandler);
-
-async function start() {
-  const embeddingsPath = path.resolve(__dirname, 'data/embeddings.json');
-  console.log('[startup] loading vector store...');
-  loadFromFile(embeddingsPath);
-  console.log(`[startup] loaded ${getStoreSize()} vectors into memory`);
-
-  console.log('[startup] loading embedding model...');
-  await initializeModel();
-  console.log('[startup] embedding model initialized');
-
-  app.listen(PORT, () => {
-    console.log(`[clearpath] server running on http://localhost:${PORT}`);
-    console.log('[clearpath] ready to accept requests.');
-  });
+function adapt(handler: any) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await handler(req as any, res as any);
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
-start().catch((err) => {
-  console.error('[clearpath] fatal startup error:', err);
-  process.exit(1);
+app.get('/api/health', adapt(healthHandler));
+app.post('/api/upload', adapt(uploadHandler));
+app.post('/api/query', adapt(queryHandler));
+app.post('/api/retrieve', adapt(retrieveHandler));
+app.get('/api/documents', adapt(documentsHandler));
+app.delete('/api/documents', adapt(documentsHandler));
+
+app.use(
+  (err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error(`[error] ${err.message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    }
+  }
+);
+
+app.listen(PORT, () => {
+  console.log(`[clearpath] dev server running at http://localhost:${PORT}`);
+  console.log('[clearpath] PDF chat ready. Upload a PDF via POST /api/upload.');
+  if (!process.env.HF_API_KEY) {
+    console.warn('[clearpath] WARNING: HF_API_KEY is not set. Embeddings will fail.');
+  }
+  if (!process.env.GROQ_API_KEY) {
+    console.warn('[clearpath] WARNING: GROQ_API_KEY is not set. LLM calls will fail.');
+  }
 });
 
 export default app;
